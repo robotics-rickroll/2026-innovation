@@ -9,6 +9,34 @@ Public users can browse artifacts and AI classifications, while archaeologists l
 - Auth: JWT for archaeologists
 - AI: Mock/OpenAI/Gemini providers
 
+## Prerequisite: Install Node.js (via nvm)
+Use `nvm` so you can easily switch Node versions.
+
+macOS/Linux:
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.nvm/nvm.sh
+nvm install --lts
+nvm use --lts
+node -v
+npm -v
+```
+
+If you already have an `.nvmrc` file in the repo, you can run:
+```bash
+nvm install
+nvm use
+```
+
+Windows:
+- Use [nvm-windows](https://github.com/coreybutler/nvm-windows), then install and use an LTS version:
+```powershell
+nvm install lts
+nvm use lts
+node -v
+npm -v
+```
+
 ## Backend Setup
 ```bash
 cd backend
