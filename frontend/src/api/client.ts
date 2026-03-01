@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+export const API_BASE = API_URL.replace(/\/api\/?$/, "");
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
   const headers = new Headers(options.headers);

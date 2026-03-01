@@ -160,8 +160,10 @@ nav a.active {
 .image-grid img {
   width: 100%;
   border-radius: 8px;
-  object-fit: cover;
-  height: 120px;
+  object-fit: contain;
+  height: auto;
+  max-height: 240px;
+  background: #f6efe7;
 }
 
 .form {
@@ -189,6 +191,38 @@ nav a.active {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 1rem;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.kv-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.kv-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: #f6efe7;
+}
+
+.kv-key {
+  font-weight: 600;
+  color: #3d2b1f;
+}
+
+.kv-value {
+  color: #5b4434;
+  text-align: right;
 }
 
 button {

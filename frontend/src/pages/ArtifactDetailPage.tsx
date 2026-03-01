@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { ArtifactDetail, getArtifact } from "../api/client";
+import { API_BASE, ArtifactDetail, getArtifact } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 export function ArtifactDetailPage() {
@@ -43,7 +43,11 @@ export function ArtifactDetailPage() {
           <h2>Images</h2>
           <div className="image-grid">
             {artifact.images.map((img) => (
-              <img key={img.id} src={img.url} alt={artifact.artifact_id} />
+              <img
+                key={img.id}
+                src={img.url.startsWith("http") ? img.url : `${API_BASE}${img.url}`}
+                alt={artifact.artifact_id}
+              />
             ))}
           </div>
         </div>
@@ -53,7 +57,18 @@ export function ArtifactDetailPage() {
           <p>Width: {artifact.measure_width_cm} cm</p>
           <p>Height: {artifact.measure_height_cm} cm</p>
           <h3>Additional Info</h3>
-          <pre className="pre">{JSON.stringify(artifact.additional_info, null, 2)}</pre>
+          {artifact.additional_info && Object.keys(artifact.additional_info).length > 0 ? (
+            <div className="kv-list">
+              {Object.entries(artifact.additional_info).map(([key, value]) => (
+                <div key={key} className="kv-item">
+                  <span className="kv-key">{key}</span>
+                  <span className="kv-value">{String(value)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>-</p>
+          )}
         </div>
         <div className="detail-card">
           <h2>AI Classification</h2>

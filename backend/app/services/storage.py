@@ -19,6 +19,11 @@ def save_upload(file: UploadFile) -> str:
     suffix = Path(file.filename).suffix
     name = f"{uuid4().hex}{suffix}"
     dest = upload_dir / name
+    #print details 
+    print(f"Saving upload to: {dest}")
+    
+
     with dest.open("wb") as buffer:
         buffer.write(file.file.read())
+        print(f"Saved to: {dest}")
     return f"/uploads/{name}"

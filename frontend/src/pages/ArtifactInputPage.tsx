@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { classifyArtifact, createArtifact } from "../api/client";
+import { createArtifact } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 export function ArtifactInputPage() {
@@ -10,6 +10,7 @@ export function ArtifactInputPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [additionalFields, setAdditionalFields] = useState([{ key: "", value: "" }]);
   const [form, setForm] = useState({
     artifact_id: "",
     timestamp: "",
@@ -20,8 +21,7 @@ export function ArtifactInputPage() {
     measure_height_cm: "",
     hollow: "",
     material_guess: "",
-    shape: "",
-    additional_json: ""
+    shape: ""
   });
 
   if (!token) {
@@ -36,16 +36,12 @@ export function ArtifactInputPage() {
     if (form.hollow) additionalInfo.hollow = form.hollow === "true";
     if (form.material_guess) additionalInfo.material_guess = form.material_guess;
     if (form.shape) additionalInfo.shape = form.shape;
-    if (form.additional_json) {
-      try {
-        const parsed = JSON.parse(form.additional_json);
-        additionalInfo = { ...additionalInfo, ...parsed };
-      } catch (err) {
-        setError("Invalid additional JSON");
-        setLoading(false);
-        return;
+    additionalFields.forEach((field) => {
+      const key = field.key.trim();
+      if (key) {
+        additionalInfo[key] = field.value;
       }
-    }
+    });
     try {
       const payload = {
         artifact_id: form.artifact_id,
@@ -59,7 +55,6 @@ export function ArtifactInputPage() {
         image_urls: []
       };
       const created = await createArtifact(payload, token, files);
-      await classifyArtifact(created.id, token);
       navigate(`/artifacts/${created.id}`);
     } catch (err: any) {
       setError(err.message || "Failed to submit");
@@ -160,14 +155,41 @@ export function ArtifactInputPage() {
             <input value={form.shape} onChange={(event) => setForm({ ...form, shape: event.target.value })} />
           </label>
         </div>
-        <label>
-          Additional JSON
-          <textarea
-            rows={4}
-            value={form.additional_json}
-            onChange={(event) => setForm({ ...form, additional_json: event.target.value })}
-          />
-        </label>
+        <div>
+          <h3>Additional Fields</h3>
+          {additionalFields.map((field, index) => (
+            <div className="kv-row" key={`${field.key}-${index}`}>
+              <input
+                placeholder="Key"
+                value={field.key}
+                onChange={(event) => {
+                  const next = [...additionalFields];
+                  next[index] = { ...next[index], key: event.target.value };
+                  setAdditionalFields(next);
+                }}
+              />
+              <input
+                placeholder="Value"
+                value={field.value}
+                onChange={(event) => {
+                  const next = [...additionalFields];
+                  next[index] = { ...next[index], value: event.target.value };
+                  setAdditionalFields(next);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setAdditionalFields(additionalFields.filter((_, idx) => idx !== index))}
+                disabled={additionalFields.length === 1}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setAdditionalFields([...additionalFields, { key: "", value: "" }])}>
+            Add Field
+          </button>
+        </div>
         <label>
           Images (min 5 recommended)
           <input

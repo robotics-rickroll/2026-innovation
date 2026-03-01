@@ -1,13 +1,16 @@
 from __future__ import annotations
 import json
+from pathlib import Path
 from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import settings
 from app.models.artifact import Artifact
 from app.models.artifact_image import ArtifactImage
 from app.models.classification_result import ClassificationResult
@@ -46,6 +49,76 @@ def _attach_latest(artifact: Artifact, db: Session) -> Optional[ClassificationRe
 
 def _parse_create_payload(raw: dict[str, Any]) -> ArtifactCreate:
     return ArtifactCreate(**raw)
+
+def _normalize_additional_info(value: Any) -> Optional[dict[str, Any]]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        normalized: dict[str, Any] = {}
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key", "")).strip()
+            if key:
+                normalized[key] = item.get("value")
+        return normalized
+    return {"value": value}
+
+
+def _build_classification_payload(artifact: Artifact) -> dict[str, Any]:
+    image_urls = [img.url for img in artifact.images]
+    image_paths: list[str] = []
+    for url in image_urls:
+        if url.startswith("/uploads/"):
+            image_paths.append(str(Path(settings.upload_dir) / Path(url).name))
+    return {
+        "artifact_id": artifact.artifact_id,
+        "timestamp": artifact.timestamp.isoformat(),
+        "measurements": {
+            "length_cm": artifact.measure_length_cm,
+            "width_cm": artifact.measure_width_cm,
+            "height_cm": artifact.measure_height_cm,
+        },
+        "additional_info": artifact.additional_info,
+        "image_count": len(image_urls),
+        "image_urls": image_urls,
+        "image_paths": image_paths,
+    }
+
+
+def _classify_and_store(artifact: Artifact, db: Session) -> ClassificationResult:
+    provider = get_provider()
+    payload = _build_classification_payload(artifact)
+    try:
+        raw = provider.classify(payload)
+        normalized = normalize_classification(raw)
+        status_value = ClassificationStatus(normalized["status"])
+        classification = ClassificationResult(
+            artifact_id=artifact.id,
+            status=status_value,
+            summary=normalized.get("summary"),
+            artifact_type=normalized.get("artifact_type"),
+            civilization=normalized.get("civilization"),
+            age_range=normalized.get("age_range"),
+            confidence=normalized.get("confidence"),
+            raw_response=raw,
+            provider=provider.provider_name,
+        )
+    except Exception:
+        raw = status_from_error()
+        classification = ClassificationResult(
+            artifact_id=artifact.id,
+            status=ClassificationStatus.ERROR,
+            summary=raw.get("summary"),
+            raw_response={"error": "parse_failed"},
+            provider=provider.provider_name,
+        )
+    db.add(classification)
+    db.commit()
+    db.refresh(classification)
+    return classification
 
 
 @router.get("", response_model=list[ArtifactListItem])
@@ -158,12 +231,20 @@ async def create_artifact(
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail="Invalid metadata JSON") from exc
         files = form.getlist("files")
+        print(f"Received {len(files)} files")
+        #print file details
+        print("Files details:")
+        print(files)
         for item in files:
-            if isinstance(item, UploadFile):
+            if isinstance(item, (UploadFile, StarletteUploadFile)):
                 images.append(save_upload(item))
+            else:
+                raise HTTPException(status_code=400, detail="Invalid file upload")
         payload["image_urls"] = images
     else:
         payload = await request.json()
+    if "additional_info" in payload:
+        payload["additional_info"] = _normalize_additional_info(payload.get("additional_info"))
     data = _parse_create_payload(payload)
     location_approx = compute_location_approx(data.location_lat, data.location_lng)
     artifact = Artifact(
@@ -183,6 +264,7 @@ async def create_artifact(
         db.add(ArtifactImage(artifact_id=artifact.id, url=url))
     db.commit()
     db.refresh(artifact)
+    _classify_and_store(artifact, db)
     if len(data.image_urls) < 5:
         print("Warning: fewer than 5 images submitted")
     return get_artifact(artifact.id, db)
@@ -238,45 +320,7 @@ def classify_artifact(
     artifact = db.query(Artifact).filter(Artifact.id == artifact_id).first()
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
-    provider = get_provider()
-    payload = {
-        "artifact_id": artifact.artifact_id,
-        "timestamp": artifact.timestamp.isoformat(),
-        "measurements": {
-            "length_cm": artifact.measure_length_cm,
-            "width_cm": artifact.measure_width_cm,
-            "height_cm": artifact.measure_height_cm,
-        },
-        "additional_info": artifact.additional_info,
-        "image_count": len(artifact.images),
-    }
-    try:
-        raw = provider.classify(payload)
-        normalized = normalize_classification(raw)
-        status_value = ClassificationStatus(normalized["status"])
-        classification = ClassificationResult(
-            artifact_id=artifact.id,
-            status=status_value,
-            summary=normalized.get("summary"),
-            artifact_type=normalized.get("artifact_type"),
-            civilization=normalized.get("civilization"),
-            age_range=normalized.get("age_range"),
-            confidence=normalized.get("confidence"),
-            raw_response=raw,
-            provider=provider.provider_name,
-        )
-    except Exception:
-        raw = status_from_error()
-        classification = ClassificationResult(
-            artifact_id=artifact.id,
-            status=ClassificationStatus.ERROR,
-            summary=raw.get("summary"),
-            raw_response={"error": "parse_failed"},
-            provider=provider.provider_name,
-        )
-    db.add(classification)
-    db.commit()
-    db.refresh(classification)
+    classification = _classify_and_store(artifact, db)
     return ClassificationResultSchema.model_validate(classification, from_attributes=True)
 
 
